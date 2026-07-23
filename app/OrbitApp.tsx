@@ -28,7 +28,7 @@ import {
 } from "react";
 import type { ForceGraphMethods } from "react-force-graph-3d";
 import * as THREE from "three";
-import { avatarUrl, filterGraph, formatCompact, nodeId, prepareGraph } from "./graph";
+import { avatarUrl, filterGraph, formatCompact, nodeId, prepareGraph, publicAssetUrl } from "./graph";
 import type {
   Community,
   GraphFilter,
@@ -256,7 +256,7 @@ export function OrbitApp() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/data/graph.json", { signal: controller.signal })
+    fetch(publicAssetUrl("/data/graph.json"), { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("无法读取本地图谱快照");
         return (await response.json()) as RawGraph;

@@ -302,8 +302,14 @@ export const formatCompact = (value?: number) =>
     ? new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(value ?? 0)
     : "—";
 
+export const publicAssetUrl = (value: string) => {
+  if (!value.startsWith("/") || typeof document === "undefined") return value;
+  return new URL(value.slice(1), document.baseURI).toString();
+};
+
 export const avatarUrl = (node: OrbitNode) => {
-  if (node.avatar?.startsWith("data:") || node.avatar?.startsWith("/")) return node.avatar;
+  if (node.avatar?.startsWith("data:")) return node.avatar;
+  if (node.avatar?.startsWith("/")) return publicAssetUrl(node.avatar);
   if (node.profilePicture?.startsWith("data:")) return node.profilePicture;
 
   const color = node.isSeed
