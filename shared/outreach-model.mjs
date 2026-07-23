@@ -1,6 +1,7 @@
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export const outreachPolicy = {
+  version: "outreach-v1.1",
   minimumFollowers: 2_000,
   maximumFollowers: 5_000_000,
   minimumRelevance: 8,
@@ -10,6 +11,13 @@ export const outreachPolicy = {
   sThreshold: 75,
   aThreshold: 65,
   bThreshold: 55,
+};
+
+const tierLabels = {
+  S: "优先人工核验",
+  A: "进入复核名单",
+  B: "继续观察",
+  C: "普通候选",
 };
 
 export const relevanceSignals = [
@@ -75,23 +83,17 @@ export const calculateOutreach = (node) => {
           ? "B"
           : "C"
     : "WATCH";
-  const tierLabels = {
-    S: "立即建联",
-    A: "优先跟进",
-    B: "重点观察",
-    C: "普通候选",
-    WATCH:
-      followers > outreachPolicy.maximumFollowers
-        ? "战略大号"
-        : relevance < outreachPolicy.minimumRelevance
-          ? "相关性待核"
-          : "潜力观察",
-  };
+  const watchLabel =
+    followers > outreachPolicy.maximumFollowers
+      ? "战略大号"
+      : relevance < outreachPolicy.minimumRelevance
+        ? "相关性待核"
+        : "潜力观察";
 
   return {
     score,
     tier,
-    tierLabel: tierLabels[tier],
+    tierLabel: tier === "WATCH" ? watchLabel : tierLabels[tier],
     isPriority: tier === "S" || tier === "A",
     isCandidate: tier === "S" || tier === "A" || tier === "B",
     factors: [
@@ -105,6 +107,46 @@ export const calculateOutreach = (node) => {
       followers >= 10_000 ? "具备稳定传播规模" : "适合小范围试联",
       ...signals.slice(0, 2).map((signal) => signal.label),
     ],
+  };
+};
+
+/**
+ * Public snapshots have already decided which identities may remain public.
+ * Never recompute S/A from anonymized names, bios, or perturbed metrics: doing
+ * so can promote a redacted profile solely because its placeholder contains
+ * words such as "AI creator".
+ */
+export const calculateDisplayOutreach = (node) => {
+  if (node.isSeed) return calculateOutreach(node);
+
+  if (node.identityScope === "anonymous") {
+    const retainedTier = node.finalTier ?? node.preservedTier;
+    const safeTier = ["B", "C", "WATCH"].includes(retainedTier) ? retainedTier : "WATCH";
+    return {
+      score: null,
+      tier: safeTier,
+      tierLabel: safeTier === "WATCH" ? "身份待核" : tierLabels[safeTier],
+      isPriority: false,
+      isCandidate: safeTier === "B",
+      factors: [],
+      fitLabels: [],
+      reasons: ["公开演示中已移除身份和精确指标，不对匿名字段二次评分"],
+    };
+  }
+
+  const calculated = calculateOutreach(node);
+  const retainedTier = node.finalTier ?? node.preservedTier;
+  if (!["S", "A", "B", "C", "WATCH"].includes(retainedTier)) return calculated;
+
+  return {
+    ...calculated,
+    tier: retainedTier,
+    tierLabel:
+      retainedTier === "WATCH"
+        ? calculated.tierLabel
+        : tierLabels[retainedTier],
+    isPriority: retainedTier === "S" || retainedTier === "A",
+    isCandidate: retainedTier === "S" || retainedTier === "A" || retainedTier === "B",
   };
 };
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { calculateOutreach } from "../shared/outreach-model.mjs";
+import { calculateDisplayOutreach, calculateOutreach } from "../shared/outreach-model.mjs";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -18,7 +18,7 @@ test("server-renders the finished AI Orbit learning shell", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /<title>AI Orbit Local Lab/);
+  assert.match(html, /<title>AI Orbit/);
   assert.match(html, /AI ORBIT/);
   assert.match(html, /LOCAL LEARNING LAB/);
   assert.match(html, /正在校准本地 AI 账号星图/);
@@ -44,6 +44,7 @@ test("keeps the learning algorithms and full snapshot in the project", async () 
   assert.equal(snapshot.privacy.officialAccountsPreserved, true);
   assert.deepEqual(snapshot.privacy.priorityTiersPreserved, ["S", "A"]);
   assert.equal(snapshot.privacy.nonPriorityIdentifiersRemoved, true);
+  assert.equal(snapshot.dataContract.scoringRuleVersion, "outreach-v1.1");
   assert.equal(priorityNodes.length, snapshot.meta.publicPriorityAccounts);
   assert.equal(anonymousNodes.length, snapshot.meta.anonymousAccounts);
   assert.ok(officialNodes.every((node) => node.url?.startsWith("https://x.com/") && node.avatar?.startsWith("/avatars/official/")));
@@ -52,4 +53,33 @@ test("keeps the learning algorithms and full snapshot in the project", async () 
   assert.ok(priorityNodes.every((node) => calculateOutreach(node).tier === node.preservedTier));
   assert.ok(anonymousNodes.every((node) => !node.url && !node.avatar && !node.profilePicture));
   assert.ok(anonymousNodes.every((node) => /^account_\d+$/.test(node.id)));
+  const displayScores = snapshot.nodes.map((node) => ({
+    node,
+    outreach: calculateDisplayOutreach(node),
+  }));
+  const displayPriority = displayScores.filter(({ outreach }) => outreach.isPriority);
+  assert.equal(displayPriority.length, 125);
+  assert.equal(displayPriority.filter(({ outreach }) => outreach.tier === "S").length, 44);
+  assert.equal(displayPriority.filter(({ outreach }) => outreach.tier === "A").length, 81);
+  assert.ok(
+    displayScores
+      .filter(({ node }) => node.identityScope === "anonymous")
+      .every(({ outreach }) => !outreach.isPriority && !["S", "A"].includes(outreach.tier)),
+  );
+});
+
+test("never promotes redacted placeholder text into a public priority tier", () => {
+  const anonymized = {
+    id: "account_test",
+    name: "AI creator",
+    description: "AI creator / 生成式创作人",
+    followers: 900_000,
+    originSeedIds: ["brand_a", "brand_b", "brand_c", "brand_d"],
+    identityScope: "anonymous",
+  };
+  assert.ok(["S", "A"].includes(calculateOutreach(anonymized).tier));
+  const publicScore = calculateDisplayOutreach(anonymized);
+  assert.equal(publicScore.tier, "WATCH");
+  assert.equal(publicScore.score, null);
+  assert.equal(publicScore.isPriority, false);
 });

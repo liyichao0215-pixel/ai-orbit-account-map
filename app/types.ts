@@ -44,6 +44,7 @@ export interface OrbitNode {
   dataStatus?: string;
   identityScope?: "official-public" | "priority-public" | "anonymous";
   preservedTier?: OutreachTier;
+  finalTier?: OutreachTier;
   relationCoverage?: string;
   pagesScanned?: number;
   outreach?: OutreachScore;
@@ -81,6 +82,12 @@ export interface RawGraph {
     provider: string;
     status: "live" | "partial" | "snapshot";
     message: string;
+  };
+  dataContract?: {
+    datasetId: string;
+    scoringRuleVersion: string;
+    privacyTransformVersion: string;
+    tierPolicy: string;
   };
   privacy?: {
     level: "anonymized-demo" | "hybrid-public-officials" | "hybrid-public-priority";

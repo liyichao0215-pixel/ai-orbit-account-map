@@ -1,68 +1,162 @@
-# AI Orbit Local Lab
+# AI Orbit｜账号关系可视化原型
 
-这是一个可在本机运行、用于学习 3D 关系图谱产品原型的 React/TypeScript 项目。它重写了 AI Orbit 的核心交互，不复制压缩后的线上源码，也不保留真实账号身份。
+把多个 AI 官号分散的公开关注列表，转成一张可搜索、可解释、可写回运营动作的 3D 关系地图。
 
-首页右下角的“AI 产品经理拆解”提供 5 步内置导览。更完整的练习见：
+[主站演示](https://liyichao-ai-orbit.liyichao0215.chatgpt.site) · [GitHub Pages 备用站](https://liyichao0215-pixel.github.io/ai-orbit-account-map/) · [60 秒演示入口](https://liyichao-ai-orbit.liyichao0215.chatgpt.site)
 
-- `docs/AI产品经理学习路径.md`：从问题、数据、算法、交互到 MVP 验收。
-- `docs/PRD-账号关系可视化看板.md`：一份可继续修改的学习版 PRD。
+![AI Orbit 全局关系图](./public/screenshots/overview.png)
 
-## 你能学到什么
+## 这是一个什么项目
 
-1. `app/types.ts`：图谱节点、关系、社区和建联评分的数据结构。
-2. `app/graph.ts`：共同关注计算、社区分配、球体中心布局、Fibonacci Sphere 节点坐标。
-3. `app/OrbitApp.tsx`：Three.js 节点、曲线、镜头聚焦、搜索、筛选、详情和建联雷达。
-4. `app/globals.css`：完整的桌面端与移动端响应式界面。
-5. `public/data/graph.json`：用于本地学习的分层脱敏图谱快照。
-6. `shared/outreach-model.mjs`：前端与重新加载脚本共用的 S/A 评分规则。
-7. `scripts/sanitize-graph.mjs`：保留官号和 S/A 账号，匿名化 B 级及以下账号。
-8. `scripts/reload-public-snapshot.mjs`：重新获取公开快照并下载公开账号头像。
+矩阵运营面对的不是“找不到账号”，而是多个官号的关注关系彼此分散，很难发现共同关注对象，也很难解释为什么先研究某个账号。
 
-## 本地启动
+这个原型完成了四件事：
 
-双击项目根目录的 `启动本地网站.command`，或在本目录运行：
+1. 把 16 个 AI 产品官号及其一跳关注关系建模为 Node / Link；
+2. 用关系社区和 Fibonacci Sphere 展开 3D 节点空间；
+3. 用影响力、品牌共识、内容匹配形成可解释的 S/A 初筛；
+4. 把候选写入本机运营清单，补充负责人、状态、备注和下一步，并导出 CSV。
+
+它不是自动建联工具、达人 CRM 或已经验证业务收益的成熟产品。
+
+## 在线版本
+
+| 版本 | 地址 | 用途 |
+|---|---|---|
+| 主站 | [liyichao-ai-orbit.liyichao0215.chatgpt.site](https://liyichao-ai-orbit.liyichao0215.chatgpt.site) | 面试演示与作品集主入口 |
+| 备用站 | [liyichao0215-pixel.github.io/ai-orbit-account-map](https://liyichao0215-pixel.github.io/ai-orbit-account-map/) | GitHub Pages 静态备份 |
+| 源代码 | [github.com/liyichao0215-pixel/ai-orbit-account-map](https://github.com/liyichao0215-pixel/ai-orbit-account-map) | 代码、PRD、规则与迭代证据 |
+
+## 面试时的 60 秒讲法
+
+1. **问题**：运营需要从 1,809 个账号中找到值得继续人工核验的人。
+2. **关系**：把 16 个官号的 2,410 条公开关注关系放进同一张图。
+3. **初筛**：只看 44 个 S 级与 81 个 A 级公开候选。
+4. **证据**：以 INK 为例，88 分、5 个官号共同关注，详情能拆出每项得分。
+5. **行动与边界**：加入本机运营清单，但不自动触达；快照、评分和真人验证限制都明确展示。
+
+网页顶部的“60 秒演示”会按这五步切换视图。
+
+![公开 S/A 候选雷达](./public/screenshots/radar.png)
+
+![候选详情与可解释评分](./public/screenshots/detail.png)
+
+## 连续追问七个为什么
+
+```text
+账号信息为什么难用
+→ 为什么使用官号关注关系
+→ 为什么分析共同关注与社区
+→ 为什么使用球形 3D
+→ 为什么还要可解释评分
+→ 为什么必须有隐私与数据契约
+→ 为什么最终要形成运营写回闭环
+```
+
+完整因果链见 [连续追问七个为什么](./docs/连续追问七个为什么-项目思维链路.md)。
+
+## S/A 筛选逻辑
+
+先过资格门槛：
+
+- 粉丝量在 2,000–5,000,000 之间；
+- 内容匹配至少 8 分；
+- 未通过门槛进入 WATCH。
+
+再计算：
+
+```text
+总分 = 粉丝影响力（最高 45）
+     + 核心官号共同关注（最高 35）
+     + 简介内容匹配（最高 20）
+
+S：总分 ≥ 75
+A：65 ≤ 总分 < 75
+B：55 ≤ 总分 < 65
+```
+
+影响力使用粉丝量对数归一；品牌共识最多计算 4 个官号；内容信号为 AI 相关 +9、创作人 +8、行业建设者 +5，封顶 20。
+
+这是一套可解释的产品假设，不是账号价值的客观结论。当前公开展示规则版本为 `outreach-v1.1`。
+
+## 数据可信度与隐私
+
+当前快照包含：
+
+- 1,809 个账号节点；
+- 2,410 条关注关系；
+- 16 个公开官号；
+- 44 个公开 S 级候选；
+- 81 个公开 A 级候选；
+- 1,668 个匿名 B/C/WATCH 账号。
+
+分级在脱敏前确定并锁定。匿名账号移除身份、头像和外链，精确指标被扰动；前端不会用匿名名称或占位简介重新计算 S/A，避免产生虚假候选。
+
+详细边界见 [DATA_POLICY.md](./DATA_POLICY.md) 与 [ATTRIBUTION.md](./ATTRIBUTION.md)。
+
+## 技术结构
+
+```text
+授权图谱快照
+  → shared/outreach-model.mjs        评分与公开展示契约
+  → scripts/sanitize-graph.mjs       分层脱敏
+  → public/data/graph.json           公开快照
+  → app/graph.ts                     社区、球心、球面坐标
+  → app/OrbitApp.tsx                 3D、搜索、雷达、详情、清单
+  → localStorage / CSV               设备本地运营写回
+```
+
+关键文件：
+
+- `app/graph.ts`：社区分配、球体中心、Fibonacci Sphere；
+- `app/OrbitApp.tsx`：Three.js 节点、曲线、镜头与完整交互；
+- `shared/outreach-model.mjs`：评分规则和匿名账号安全展示规则；
+- `scripts/sanitize-graph.mjs`：官号 / S/A 公开，其余账号脱敏；
+- `tests/rendered-html.test.mjs`：公开数据不变量和匿名账号不晋级测试。
+
+## 用户研究状态
+
+已经完成的是 **5 个 Agent 的角色化页面走查**，覆盖矩阵负责人、达人运营、实习生、一线运营和数据产品经理。它属于启发式预检，不是 5 位真人访谈，不能写成真实业务验证。
+
+- [五角色模拟可用性测试报告](./docs/五角色模拟可用性测试报告.md)
+- [真人可用性测试执行包](./docs/真人可用性测试执行包.md)
+
+真人测试当前状态：**待执行**。
+
+## 本地运行
+
+需要 Node.js 22.13+ 与 pnpm：
 
 ```bash
+pnpm install
 pnpm dev
 ```
 
-然后访问 `http://localhost:3000/`。
+打开 `http://localhost:3000/`。macOS 也可以双击 `启动本地网站.command`。
 
-## 建议的学习顺序
-
-先在 `graph.ts` 搜索下面三个函数：
-
-- `buildCommunities()`：决定账号进入哪个球。
-- `placeCommunityCenters()`：决定每个球在 3D 空间中的位置。
-- `placeNodesOnSpheres()`：决定账号在球面上的位置。
-
-接着在 `OrbitApp.tsx` 搜索：
-
-- `nodeObject`：普通节点、优先节点和头像节点的渲染。
-- `linkObject`：球内曲线和跨球曲线的渲染。
-- `selectNode`：点击账号后的镜头运动。
-
-## 数据说明
-
-当前快照保存 1,809 个账号节点和 2,410 条关系。16 个核心官号、44 个 S 级账号和 81 个 A 级账号保留公开名称、账号、简介、数据、头像和 X 主页；其余 1,668 个 B/C/WATCH 账号使用匿名编号，真实身份、头像和主页链接已移除，精确指标已扰动。项目不包含第三方 API 密钥，已加载的图谱可以离线浏览。
-
-### S/A 筛选逻辑
-
-先过资格门槛：粉丝量必须在 2,000–5,000,000 之间，内容匹配至少 8 分。通过后计算：
-
-```text
-总分 = 粉丝影响力（最高 45）+ 品牌共同关注（最高 35）+ 内容匹配（最高 20）
-S 级：总分 ≥ 75
-A 级：65 ≤ 总分 < 75
-B 级：55 ≤ 总分 < 65
-```
-
-影响力使用粉丝量的对数归一；品牌共识最多计算 4 个核心官号；内容匹配使用简介信号：AI 相关 +9、创作人 +8、行业建设者 +5，封顶 20。这是一套可解释的产品假设，不是客观价值判断。
-
-重新读取源站当前可用快照：
+验证：
 
 ```bash
-pnpm reload:snapshot
+pnpm lint
+pnpm test
+pnpm build:pages
 ```
 
-如果以后换成你自己的授权导出，请先运行分层脱敏脚本，且不要把原始文件放入 `public/` 或提交到 Git。
+重新生成公开快照时，必须显式传入你有权访问的地址：
+
+```bash
+pnpm reload:snapshot -- "https://example.com/authorized-graph.json"
+```
+
+## 已知限制
+
+- 数据是快照，不是实时平台数据；
+- 关注关系不等于品牌背书或合作；
+- 评分未经过真实回复率、合作率或内容表现校准；
+- 3D 图适合探索，不一定适合高频批量操作；
+- 运营清单只保存在当前浏览器，不支持账号登录和多人协作；
+- 尚未完成 3–5 位真人运营者测试。
+
+## 许可
+
+项目源代码使用 [MIT License](./LICENSE)。许可证不授予第三方账号资料、头像、名称、商标或其他外部资产的权利。

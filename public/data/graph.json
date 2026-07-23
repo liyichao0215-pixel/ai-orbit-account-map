@@ -6,6 +6,12 @@
     "status": "snapshot",
     "message": "Official, S-tier, and A-tier profiles are retained; lower-tier account identities are removed and exact metrics are perturbed."
   },
+  "dataContract": {
+    "datasetId": "ai-orbit-public-2026-07-15",
+    "scoringRuleVersion": "outreach-v1.1",
+    "privacyTransformVersion": "hybrid-public-priority-v1.1",
+    "tierPolicy": "Tier is calculated before redaction and locked for display; anonymized fields are never rescored."
+  },
   "privacy": {
     "level": "hybrid-public-priority",
     "officialAccountsPreserved": true,

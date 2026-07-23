@@ -5,7 +5,12 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { calculateOutreach, keepsPublicIdentity } from "../shared/outreach-model.mjs";
 
-const graphUrl = process.argv[2] ?? "https://ai-orbit-creator-map.flovaai.chatgpt.site/api/graph";
+const graphUrl = process.argv[2];
+if (!graphUrl) {
+  console.error("用法：pnpm reload:snapshot -- <你有权读取的 graph.json 或 API URL>");
+  console.error("脚本不再内置第三方源站地址，避免误抓取或误提交未经授权的数据。");
+  process.exit(1);
+}
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectDir = resolve(scriptDir, "..");
 const outputPath = join(projectDir, "public/data/graph.json");
