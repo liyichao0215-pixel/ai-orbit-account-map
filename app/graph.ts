@@ -6,7 +6,7 @@ import type {
   PreparedGraph,
   RawGraph,
 } from "./types";
-import { calculateOutreach } from "../shared/outreach-model.mjs";
+import { calculateDisplayOutreach } from "../shared/outreach-model.mjs";
 
 export const nodeId = (value: string | OrbitNode | undefined) =>
   typeof value === "string" ? value.toLowerCase() : String(value?.id ?? "").toLowerCase();
@@ -24,7 +24,7 @@ const stableHash = (value: string) => {
 };
 
 const scoreOutreach = (node: OrbitNode): OutreachScore =>
-  calculateOutreach(node) as OutreachScore;
+  calculateDisplayOutreach(node) as OutreachScore;
 
 const fibonacciDirections = (count = 72) => {
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));

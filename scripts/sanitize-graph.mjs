@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { calculateOutreach, keepsPublicIdentity } from "../shared/outreach-model.mjs";
+import { calculateOutreach, keepsPublicIdentity, outreachPolicy } from "../shared/outreach-model.mjs";
 
 const [inputArg, outputArg] = process.argv.slice(2);
 
@@ -120,6 +120,7 @@ const nodes = raw.nodes.map((node) => {
     relationCoverage: node.relationCoverage === "complete" ? "complete" : "not_scanned",
     pagesScanned: node.pagesScanned ? 1 : 0,
     identityScope: "anonymous",
+    finalTier: outreach?.tier ?? "WATCH",
   };
 });
 
@@ -144,6 +145,12 @@ const sanitized = {
     provider: "Hybrid public-priority learning snapshot",
     status: "snapshot",
     message: "Official, S-tier, and A-tier profiles are retained; lower-tier account identities are removed and exact metrics are perturbed.",
+  },
+  dataContract: {
+    datasetId: `ai-orbit-public-${new Date(raw.generatedAt ?? Date.now()).toISOString().slice(0, 10)}`,
+    scoringRuleVersion: outreachPolicy.version,
+    privacyTransformVersion: "hybrid-public-priority-v1.1",
+    tierPolicy: "Tier is calculated before redaction and locked for display; anonymized fields are never rescored.",
   },
   privacy: {
     level: "hybrid-public-priority",

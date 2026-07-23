@@ -5,17 +5,26 @@
 import {
   ArrowUpRight,
   BookOpen,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
+  Code2,
   Crosshair,
+  Database,
+  Download,
   Expand,
   Maximize2,
+  PlayCircle,
+  Plus,
   RefreshCcw,
   RotateCcw,
+  Save,
   Search,
   ShieldCheck,
   Sparkles,
   Target,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -48,7 +57,7 @@ const COLORS = {
 
 const filterLabels: Record<GraphFilter, string> = {
   all: "全部",
-  priority: "S/A 建联优先",
+  priority: "S/A 优先核验",
   core: "核心官号",
   image: "图像",
   video: "视频",
@@ -92,6 +101,63 @@ const learningSteps = [
     insight: "MVP 先验证找人和解释，再考虑实时抓取、协作和自动建联。",
   },
 ] as const;
+
+const demoSteps = [
+  {
+    phase: "01 / 05 · 问题",
+    title: "从 1,809 个账号里更快找到值得人工核验的人",
+    body: "这个原型把 16 个 AI 官号的公开关注关系放进同一张 3D 图，先看生态结构，再看共同关注信号。",
+    action: "查看全局关系",
+  },
+  {
+    phase: "02 / 05 · 初筛",
+    title: "只看 125 个公开 S/A 候选",
+    body: "S/A 来自脱敏前锁定的可解释评分；匿名字段永远不会被二次打分。筛选后仍保留关联官号作为上下文。",
+    action: "切换 S/A 视图",
+  },
+  {
+    phase: "03 / 05 · 证据",
+    title: "用 INK 演示为什么它排在前面",
+    body: "INK 得分 88，受到 5 个核心官号共同关注。详情卡拆出影响力、品牌共识与内容匹配，便于复核而非盲信。",
+    action: "聚焦 INK",
+  },
+  {
+    phase: "04 / 05 · 行动",
+    title: "把判断写回运营清单",
+    body: "候选可以加入本机清单，补充负责人、状态、备注和下一步动作，并导出 CSV。这里不自动触达任何账号。",
+    action: "打开运营清单",
+  },
+  {
+    phase: "05 / 05 · 边界",
+    title: "这是决策原型，不是业务结论",
+    body: "评分是待验证的产品假设；快照不是实时数据；真人可用性测试仍需线下执行。代码、规则与限制都公开在 GitHub。",
+    action: "完成演示",
+  },
+] as const;
+
+const shortlistStatuses = [
+  "待身份核验",
+  "待内容复核",
+  "待建联",
+  "已触达",
+  "已回复",
+  "合作中",
+  "不合适",
+  "继续观察",
+] as const;
+
+type ShortlistStatus = (typeof shortlistStatuses)[number];
+
+interface ShortlistItem {
+  nodeId: string;
+  owner: string;
+  status: ShortlistStatus;
+  note: string;
+  nextAction: string;
+  updatedAt: string;
+}
+
+const shortlistStorageKey = "ai-orbit-shortlist-v1";
 
 type ForceGraphComponent = typeof import("react-force-graph-3d").default;
 
@@ -242,6 +308,20 @@ export function OrbitApp() {
   const [fullscreen, setFullscreen] = useState(false);
   const [learningOpen, setLearningOpen] = useState(false);
   const [learningStep, setLearningStep] = useState(0);
+  const [snapshotOpen, setSnapshotOpen] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
+  const [demoStep, setDemoStep] = useState(0);
+  const [shortlistOpen, setShortlistOpen] = useState(false);
+  const [shortlist, setShortlist] = useState<ShortlistItem[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = window.localStorage.getItem(shortlistStorageKey);
+      return stored ? (JSON.parse(stored) as ShortlistItem[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeShortlistId, setActiveShortlistId] = useState<string | null>(null);
   const [ForceGraph3D, setForceGraph3D] = useState<ForceGraphComponent | null>(null);
 
   useEffect(() => {
@@ -275,6 +355,10 @@ export function OrbitApp() {
     return () => document.removeEventListener("fullscreenchange", onFullscreen);
   }, []);
 
+  useEffect(() => {
+    window.localStorage.setItem(shortlistStorageKey, JSON.stringify(shortlist));
+  }, [shortlist]);
+
   const visibleGraph = useMemo(
     () => (graph ? filterGraph(graph, filter) : { nodes: [] as OrbitNode[], links: [] as OrbitLink[] }),
     [graph, filter],
@@ -285,6 +369,12 @@ export function OrbitApp() {
     [graph],
   );
   const selected = selectedId ? nodeById.get(selectedId) ?? null : null;
+  const activeShortlistItem = activeShortlistId
+    ? shortlist.find((item) => item.nodeId === activeShortlistId) ?? null
+    : null;
+  const activeShortlistNode = activeShortlistItem
+    ? nodeById.get(activeShortlistItem.nodeId) ?? null
+    : null;
 
   const connectedIds = useMemo(() => {
     if (!graph || !selectedId) return new Set<string>();
@@ -301,7 +391,7 @@ export function OrbitApp() {
   const candidates = useMemo(
     () =>
       (graph?.nodes ?? [])
-        .filter((node) => node.outreach?.isCandidate)
+        .filter((node) => node.outreach?.isPriority && node.identityScope === "priority-public")
         .toSorted(
           (left, right) =>
             (right.outreach?.score ?? 0) - (left.outreach?.score ?? 0) ||
@@ -344,7 +434,12 @@ export function OrbitApp() {
   const filterCounts = useMemo(() => {
     if (!graph) return {} as Record<GraphFilter, number>;
     const filters: GraphFilter[] = ["all", "priority", "core", "image", "video", "agent"];
-    return Object.fromEntries(filters.map((key) => [key, filterGraph(graph, key).nodes.length])) as Record<
+    return Object.fromEntries(filters.map((key) => [
+      key,
+      key === "priority"
+        ? graph.nodes.filter((node) => node.outreach?.isPriority).length
+        : filterGraph(graph, key).nodes.length,
+    ])) as Record<
       GraphFilter,
       number
     >;
@@ -528,6 +623,105 @@ export function OrbitApp() {
     else await document.documentElement.requestFullscreen();
   };
 
+  const closePanels = () => {
+    setRadarOpen(false);
+    setLearningOpen(false);
+    setSnapshotOpen(false);
+    setDemoOpen(false);
+    setShortlistOpen(false);
+  };
+
+  const addToShortlist = (node: OrbitNode) => {
+    const existing = shortlist.find((item) => item.nodeId === node.id);
+    if (!existing) {
+      setShortlist((items) => [
+        ...items,
+        {
+          nodeId: node.id,
+          owner: "",
+          status: "待身份核验",
+          note: "",
+          nextAction: "",
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+    }
+    setActiveShortlistId(node.id);
+    setSelectedId(null);
+    closePanels();
+    setShortlistOpen(true);
+  };
+
+  const updateShortlistItem = (
+    nodeIdValue: string,
+    patch: Partial<Omit<ShortlistItem, "nodeId" | "updatedAt">>,
+  ) => {
+    setShortlist((items) =>
+      items.map((item) =>
+        item.nodeId === nodeIdValue
+          ? { ...item, ...patch, updatedAt: new Date().toISOString() }
+          : item,
+      ),
+    );
+  };
+
+  const removeShortlistItem = (nodeIdValue: string) => {
+    setShortlist((items) => items.filter((item) => item.nodeId !== nodeIdValue));
+    setActiveShortlistId((current) => (current === nodeIdValue ? null : current));
+  };
+
+  const exportShortlist = () => {
+    const quote = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const rows = [
+      ["账号", "Handle", "等级", "负责人", "状态", "备注", "下一步", "更新时间"],
+      ...shortlist.map((item) => {
+        const node = nodeById.get(item.nodeId);
+        return [
+          node?.name ?? item.nodeId,
+          node?.userName ?? item.nodeId,
+          node?.outreach?.tier ?? "",
+          item.owner,
+          item.status,
+          item.note,
+          item.nextAction,
+          item.updatedAt,
+        ];
+      }),
+    ];
+    const blob = new Blob(
+      [`\uFEFF${rows.map((row) => row.map(quote).join(",")).join("\n")}`],
+      { type: "text/csv;charset=utf-8" },
+    );
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `ai-orbit-shortlist-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const runDemoAction = (step: number) => {
+    if (step === 0) {
+      setFilter("all");
+      setSelectedId(null);
+      resetCamera();
+    }
+    if (step === 1) {
+      setFilter("priority");
+      setSelectedId(null);
+      resetCamera();
+    }
+    if (step === 2) {
+      const ink = nodeById.get("0xink_");
+      if (ink) selectNode(ink);
+    }
+    if (step === 3) {
+      const ink = nodeById.get("0xink_");
+      closePanels();
+      if (ink) addToShortlist(ink);
+    }
+    if (step === demoSteps.length - 1) setDemoOpen(false);
+  };
+
   if (loading || !ForceGraph3D) {
     return (
       <main className="loading-state">
@@ -555,6 +749,30 @@ export function OrbitApp() {
   const sCount = candidates.filter((node) => node.outreach?.tier === "S").length;
   const aCount = candidates.filter((node) => node.outreach?.tier === "A").length;
   const multiBrandCount = graph.nodes.filter((node) => node.originSeedIds.length > 1).length;
+  const priorityGraph = filterGraph(graph, "priority");
+  const priorityContextCount = priorityGraph.nodes.filter((node) => node.isSeed).length;
+  const snapshotTime = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Shanghai",
+  }).format(new Date(graph.generatedAt));
+  const refreshedTime = graph.refreshedAt
+    ? new Intl.DateTimeFormat("zh-CN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+        timeZone: "Asia/Shanghai",
+      }).format(new Date(graph.refreshedAt))
+    : "未记录";
 
   return (
     <main className="app-shell">
@@ -624,17 +842,58 @@ export function OrbitApp() {
               <div className="status-pill status-live">
                 <span className="status-dot" aria-hidden="true" />
                 <span>官号 / S·A 公开</span>
-                <span className="status-time">{new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(graph.generatedAt))}</span>
+                <span className="status-time">{snapshotTime} UTC+8</span>
               </div>
               <button
+                className={`button secondary demo-toggle ${demoOpen ? "active" : ""}`}
+                onClick={() => {
+                  closePanels();
+                  setDemoOpen(true);
+                  setDemoStep(0);
+                  runDemoAction(0);
+                }}
+              ><PlayCircle size={15} /><span>60 秒演示</span></button>
+              <button
                 className={`button secondary outreach-toggle ${radarOpen ? "active" : ""}`}
-                onClick={() => { setSelectedId(null); setRadarOpen((value) => !value); }}
+                onClick={() => {
+                  const next = !radarOpen;
+                  closePanels();
+                  setSelectedId(null);
+                  setRadarOpen(next);
+                }}
                 aria-pressed={radarOpen}
                 aria-label="打开运营建联雷达"
-              ><Target size={15} /><span>建联雷达</span></button>
-              <button className="button secondary snapshot-button" disabled title="本地学习版使用分层处理的公开快照">
+              ><Target size={15} /><span>候选雷达</span></button>
+              <button
+                className={`button secondary shortlist-toggle ${shortlistOpen ? "active" : ""}`}
+                onClick={() => {
+                  const next = !shortlistOpen;
+                  closePanels();
+                  setSelectedId(null);
+                  setShortlistOpen(next);
+                }}
+              >
+                <ClipboardList size={15} /><span>运营清单</span><b>{shortlist.length}</b>
+              </button>
+              <button
+                className={`button secondary snapshot-button ${snapshotOpen ? "active" : ""}`}
+                onClick={() => {
+                  const next = !snapshotOpen;
+                  closePanels();
+                  setSelectedId(null);
+                  setSnapshotOpen(next);
+                }}
+                title="查看数据时间、来源和版本"
+              >
                 <RefreshCcw size={15} /><span>数据快照</span>
               </button>
+              <a
+                className="icon-button"
+                href="https://github.com/liyichao0215-pixel/ai-orbit-account-map"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="在 GitHub 查看项目"
+              ><Code2 size={17} /></a>
               <button className="icon-button" onClick={toggleFullscreen} aria-label={fullscreen ? "退出全屏" : "进入全屏"}>
                 {fullscreen ? <Expand size={17} /> : <Maximize2 size={17} />}
               </button>
@@ -667,7 +926,7 @@ export function OrbitApp() {
             className="learning-badge"
             onClick={() => {
               setSelectedId(null);
-              setRadarOpen(false);
+              closePanels();
               setLearningOpen(true);
             }}
           >
@@ -678,16 +937,145 @@ export function OrbitApp() {
             <RotateCcw size={14} />重置视角
           </button>
 
+          {snapshotOpen && (
+            <aside className="side-panel snapshot-panel" aria-label="数据快照说明">
+              <button className="panel-close" onClick={() => setSnapshotOpen(false)} aria-label="关闭数据快照"><X size={18} /></button>
+              <p className="eyebrow">DATA CONTRACT</p>
+              <h2>数据快照与可信边界</h2>
+              <p className="panel-description">把时间、来源、分级版本和隐私处理放在同一处，避免把演示快照误当作实时业务数据。</p>
+
+              <div className="snapshot-status">
+                <Database size={17} />
+                <div><strong>{graph.source.status.toUpperCase()}</strong><span>{graph.source.provider}</span></div>
+              </div>
+              <dl className="snapshot-facts">
+                <div><dt>源数据生成</dt><dd>{snapshotTime} UTC+8</dd></div>
+                <div><dt>公开版刷新</dt><dd>{refreshedTime} UTC+8</dd></div>
+                <div><dt>数据集 ID</dt><dd>{graph.dataContract?.datasetId ?? "未记录"}</dd></div>
+                <div><dt>评分规则</dt><dd>{graph.dataContract?.scoringRuleVersion ?? "outreach-v1.0"}</dd></div>
+                <div><dt>隐私转换</dt><dd>{graph.dataContract?.privacyTransformVersion ?? graph.privacy?.level ?? "未记录"}</dd></div>
+              </dl>
+              <div className="snapshot-counts">
+                <div><strong>{graph.meta.totalAccounts}</strong><span>账号节点</span></div>
+                <div><strong>{graph.meta.totalRelationships}</strong><span>关注关系</span></div>
+                <div><strong>{graph.meta.publicPriorityAccounts}</strong><span>公开 S/A</span></div>
+                <div><strong>{graph.meta.anonymousAccounts}</strong><span>匿名账号</span></div>
+              </div>
+              <section className="snapshot-rule">
+                <ShieldCheck size={16} />
+                <div><strong>分级先锁定，脱敏后不重算</strong><p>官号与最终 S/A 保留公开身份；B/C/WATCH 移除身份和外链。匿名名称、简介与扰动指标不再参与前端评分。</p></div>
+              </section>
+              <p className="snapshot-message">{graph.source.message}</p>
+              <a className="button secondary snapshot-doc-link" href="https://github.com/liyichao0215-pixel/ai-orbit-account-map/blob/main/DATA_POLICY.md" target="_blank" rel="noreferrer">
+                查看数据政策<ArrowUpRight size={14} />
+              </a>
+            </aside>
+          )}
+
+          {demoOpen && (
+            <aside className="side-panel demo-panel" aria-label="60 秒面试演示">
+              <button className="panel-close" onClick={() => setDemoOpen(false)} aria-label="关闭 60 秒演示"><X size={18} /></button>
+              <p className="eyebrow">60-SECOND INTERVIEW DEMO</p>
+              <h2>用 5 个镜头讲清产品</h2>
+              <p className="panel-description">每一步都回答一个面试问题：为谁解决什么、如何判断、如何落地、边界在哪里。</p>
+              <div className="demo-progress" aria-label={`演示进度 ${demoStep + 1} / ${demoSteps.length}`}>
+                {demoSteps.map((step, index) => (
+                  <button key={step.phase} className={index === demoStep ? "active" : index < demoStep ? "done" : ""} onClick={() => setDemoStep(index)} aria-label={`跳到第 ${index + 1} 步`} />
+                ))}
+              </div>
+              <section className="demo-card">
+                <span>{demoSteps[demoStep].phase}</span>
+                <h3>{demoSteps[demoStep].title}</h3>
+                <p>{demoSteps[demoStep].body}</p>
+                {demoStep === 2 && <div className="demo-proof"><b>88</b><span>综合分</span><b>5</b><span>官号共同关注</span></div>}
+              </section>
+              <div className="demo-actions">
+                <button
+                  className="button secondary"
+                  disabled={demoStep === 0}
+                  onClick={() => {
+                    const previous = Math.max(0, demoStep - 1);
+                    setDemoStep(previous);
+                    runDemoAction(previous);
+                  }}
+                ><ChevronLeft size={14} />上一步</button>
+                <button
+                  className="button primary"
+                  onClick={() => {
+                    runDemoAction(demoStep);
+                    if (demoStep < demoSteps.length - 1) {
+                      setDemoStep((value) => value + 1);
+                      setDemoOpen(true);
+                    }
+                  }}
+                >{demoSteps[demoStep].action}<ChevronRight size={14} /></button>
+              </div>
+              <p className="demo-note"><CheckCircle2 size={13} />建议讲法：先讲决策，再演示界面，最后主动说限制。</p>
+            </aside>
+          )}
+
+          {shortlistOpen && (
+            <aside className="side-panel shortlist-panel" aria-label="本地运营清单">
+              <button className="panel-close" onClick={() => setShortlistOpen(false)} aria-label="关闭运营清单"><X size={18} /></button>
+              <p className="eyebrow">LOCAL OPERATIONS LOOP</p>
+              <h2>运营清单</h2>
+              <p className="panel-description">负责人、状态与判断仅保存在当前浏览器。没有登录、多人协作或自动触达。</p>
+              <div className="shortlist-toolbar">
+                <span><ClipboardList size={14} />{shortlist.length} 个账号</span>
+                <button className="button secondary" onClick={exportShortlist} disabled={!shortlist.length}><Download size={14} />导出 CSV</button>
+              </div>
+
+              {!shortlist.length ? (
+                <div className="shortlist-empty">
+                  <Plus size={20} />
+                  <strong>清单还是空的</strong>
+                  <p>从公开 S/A 候选详情中点击“加入运营清单”。</p>
+                  <button className="button secondary" onClick={() => { setShortlistOpen(false); setRadarOpen(true); }}>去候选雷达</button>
+                </div>
+              ) : (
+                <>
+                  <div className="shortlist-list">
+                    {shortlist.map((item) => {
+                      const node = nodeById.get(item.nodeId);
+                      return (
+                        <button key={item.nodeId} className={activeShortlistId === item.nodeId ? "active" : ""} onClick={() => setActiveShortlistId(item.nodeId)}>
+                          {node && <img src={avatarUrl(node)} alt="" />}
+                          <span><strong>{node?.name ?? item.nodeId}</strong><small>{node?.outreach?.tier ?? "—"} · {item.status}{item.owner ? ` · ${item.owner}` : ""}</small></span>
+                          <ChevronRight size={14} />
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {activeShortlistItem && activeShortlistNode && (
+                    <section className="shortlist-editor">
+                      <div className="shortlist-editor-heading">
+                        <div><span>{activeShortlistNode.outreach?.tier} 级候选</span><strong>{activeShortlistNode.name}</strong></div>
+                        <button onClick={() => removeShortlistItem(activeShortlistItem.nodeId)} aria-label="从清单移除"><Trash2 size={15} /></button>
+                      </div>
+                      <label>负责人<input value={activeShortlistItem.owner} onChange={(event) => updateShortlistItem(activeShortlistItem.nodeId, { owner: event.target.value })} placeholder="例如：小李" /></label>
+                      <label>当前状态<select value={activeShortlistItem.status} onChange={(event) => updateShortlistItem(activeShortlistItem.nodeId, { status: event.target.value as ShortlistStatus })}>{shortlistStatuses.map((status) => <option key={status}>{status}</option>)}</select></label>
+                      <label>判断备注<textarea value={activeShortlistItem.note} onChange={(event) => updateShortlistItem(activeShortlistItem.nodeId, { note: event.target.value })} placeholder="记录账号调性、代表作品、风险或证据" /></label>
+                      <label>下一步动作<input value={activeShortlistItem.nextAction} onChange={(event) => updateShortlistItem(activeShortlistItem.nodeId, { nextAction: event.target.value })} placeholder="例如：周五前人工复核最近 20 条作品" /></label>
+                      <div className="shortlist-saved"><Save size={13} />已自动保存在本机 · {new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(activeShortlistItem.updatedAt))}</div>
+                      <button className="button secondary shortlist-view-node" onClick={() => { setShortlistOpen(false); selectNode(activeShortlistNode); }}>返回账号详情<ArrowUpRight size={14} /></button>
+                    </section>
+                  )}
+                </>
+              )}
+            </aside>
+          )}
+
           {radarOpen && (
-            <aside className="side-panel outreach-panel" aria-label="运营建联雷达">
-              <button className="panel-close" onClick={() => setRadarOpen(false)} aria-label="关闭建联雷达"><X size={18} /></button>
-              <p className="eyebrow">OUTREACH RADAR</p>
-              <h2>运营建联雷达</h2>
-              <p className="panel-description">优先看同时具备传播规模、品牌共同关注和 AI 创作匹配度的账号。</p>
+            <aside className="side-panel outreach-panel" aria-label="运营候选雷达">
+              <button className="panel-close" onClick={() => setRadarOpen(false)} aria-label="关闭候选雷达"><X size={18} /></button>
+              <p className="eyebrow">CANDIDATE RADAR</p>
+              <h2>运营候选雷达</h2>
+              <p className="panel-description">先用传播规模、品牌共同关注和内容匹配做初筛，再由运营者核验身份、作品与合作风险。</p>
 
               <div className="radar-summary" aria-label="建联候选概览">
-                <div><span>S 级</span><strong>{sCount}</strong><small>立即建联</small></div>
-                <div><span>A 级</span><strong>{aCount}</strong><small>优先跟进</small></div>
+                <div><span>S 级</span><strong>{sCount}</strong><small>优先人工核验</small></div>
+                <div><span>A 级</span><strong>{aCount}</strong><small>进入复核名单</small></div>
                 <div><span>多品牌</span><strong>{multiBrandCount}</strong><small>交叉背书</small></div>
               </div>
 
@@ -706,7 +1094,7 @@ export function OrbitApp() {
                 <p className="logic-privacy"><ShieldCheck size={13} />官方账号及最终 S/A 级账号保留公开身份；B 级及以下继续脱敏。</p>
               </section>
 
-              <div className="panel-section-heading"><span><Sparkles size={14} />信号分布</span><small>{candidates.length} 个 B 级以上候选</small></div>
+              <div className="panel-section-heading"><span><Sparkles size={14} />信号分布</span><small>{candidates.length} 个公开 S/A 候选</small></div>
               <div className="signal-matrix" aria-label="账号影响力与品牌共识分布">
                 <span className="matrix-label top">4 品牌</span>
                 <span className="matrix-label middle">2 品牌</span>
@@ -726,7 +1114,7 @@ export function OrbitApp() {
                 <button className={sortMode === "consensus" ? "active" : ""} onClick={() => setSortMode("consensus")}>共同关注</button>
                 <button className={sortMode === "reach" ? "active" : ""} onClick={() => setSortMode("reach")}>粉丝影响</button>
               </div>
-              <div className="candidate-list" aria-label={`完整建联候选列表，共 ${candidates.length} 个账号`}>
+              <div className="candidate-list" aria-label={`完整公开 S/A 候选列表，共 ${candidates.length} 个账号`}>
                 {sortedCandidates.map((node, index) => (
                   <button key={node.id} className="candidate-row" onClick={() => selectNode(node)}>
                     <span className="rank">{String(index + 1).padStart(3, "0")}</span>
@@ -740,7 +1128,7 @@ export function OrbitApp() {
               <div className="outreach-panel-footer">
                 <p>评分：影响力 45 · 品牌共识 35 · 内容匹配 20</p>
                 <button className="button primary priority-view-button" onClick={() => { setFilter("priority"); setRadarOpen(false); resetCamera(); }}>
-                  <Target size={15} />在图中只看 {filterCounts.priority} 个 S/A 级账号
+                  <Target size={15} />查看 {candidates.length} 个 S/A 候选 + {priorityContextCount} 个关联官号
                 </button>
               </div>
             </aside>
@@ -809,16 +1197,23 @@ export function OrbitApp() {
                 <div><span>核心关注</span><strong>{selected.originSeedIds.length}</strong></div>
               </div>
 
-              {!selected.isSeed && selected.outreach && (
+              {!selected.isSeed && selected.identityScope === "priority-public" && selected.outreach && (
                 <section className={`outreach-score-card tier-${selected.outreach.tier.toLowerCase()}`}>
-                  <div className="score-card-heading"><div><span className="score-card-label">建联优先分</span><strong>{selected.outreach.score}</strong></div><span className="score-tier"><b>{selected.outreach.tier}</b>{selected.outreach.tierLabel}</span></div>
+                  <div className="score-card-heading"><div><span className="score-card-label">候选优先分</span><strong>{selected.outreach.score}</strong></div><span className="score-tier"><b>{selected.outreach.tier}</b>{selected.outreach.tierLabel}</span></div>
                   <div className="score-factor-list">
                     {selected.outreach.factors.map((factor) => (
                       <div key={factor.key} className="score-factor"><span>{factor.label}</span><span className="score-track"><i style={{ width: `${(factor.value / factor.max) * 100}%` }} /></span><strong>{factor.value}/{factor.max}</strong></div>
                     ))}
                   </div>
                   <p>{selected.outreach.reasons.join(" · ")}</p>
-                  <button className="radar-back-button" onClick={() => { setSelectedId(null); setRadarOpen(true); }}><ChevronLeft size={14} />返回建联雷达</button>
+                  <button className="radar-back-button" onClick={() => { setSelectedId(null); setRadarOpen(true); }}><ChevronLeft size={14} />返回候选雷达</button>
+                </section>
+              )}
+
+              {!selected.isSeed && selected.identityScope === "anonymous" && (
+                <section className="anonymous-score-note">
+                  <ShieldCheck size={16} />
+                  <div><strong>匿名账号不在公开版重新评分</strong><p>身份、简介和精确指标已处理。这里只保留关系拓扑，避免占位文本产生虚假的 S/A 结论。</p></div>
                 </section>
               )}
 
@@ -832,7 +1227,26 @@ export function OrbitApp() {
                   </button>
                 ))}
               </div>
-              {selected.url ? <a className="primary-link button primary" href={selected.url} target="_blank" rel="noreferrer">在 X 查看公开账号<ArrowUpRight size={15} /></a> : <div className="detail-privacy-note"><ShieldCheck size={15} />B 级及以下账号已脱敏，不提供真实主页跳转</div>}
+              {!selected.isSeed && selected.identityScope === "priority-public" && (
+                <button
+                  className="primary-link button primary"
+                  onClick={() => {
+                    const inList = shortlist.some((item) => item.nodeId === selected.id);
+                    if (inList) {
+                      setActiveShortlistId(selected.id);
+                      setSelectedId(null);
+                      closePanels();
+                      setShortlistOpen(true);
+                    } else {
+                      addToShortlist(selected);
+                    }
+                  }}
+                >
+                  {shortlist.some((item) => item.nodeId === selected.id) ? <ClipboardList size={15} /> : <Plus size={15} />}
+                  {shortlist.some((item) => item.nodeId === selected.id) ? "查看运营清单记录" : "加入运营清单"}
+                </button>
+              )}
+              {selected.url ? <a className="secondary-link button secondary" href={selected.url} target="_blank" rel="noreferrer">在 X 查看公开账号<ArrowUpRight size={15} /></a> : <div className="detail-privacy-note"><ShieldCheck size={15} />匿名账号不提供真实身份或主页跳转</div>}
             </aside>
           )}
         </div>
